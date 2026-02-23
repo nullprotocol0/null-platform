@@ -1,0 +1,38 @@
+appId: com.null.desktop
+productName: "Null"
+copyright: Copyright © 2025
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+# classic-level contains native .node files that cannot live inside an asar archive
+asarUnpack:
+  - "node_modules/classic-level/**/*"
+  - "node_modules/node-gyp-build/**/*"
+
+win:
+  executableName: Null
+  target:
+    - target: nsis
+      arch: [x64]
+  sign: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.social-networking
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]

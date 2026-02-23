@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ws://localhost:*;"
+    />
+    <title>Null — Encrypted Messaging</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0a0a;
+        --bg-surface: #111111;
+        --bg-hover: #1a1a1a;
+        --green: #00ff41;
+        --green-dim: #00aa2a;
+        --red: #ff4444;
+        --muted: #555555;
+        --border: #222222;
+        --font: "Courier New", Courier, monospace;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--green);
+        font-family: var(--font);
+        height: 100vh;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      #root {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      input,
+      textarea,
+      button {
+        font-family: var(--font);
+      }
+
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--bg);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="../main.tsx"></script>
+  </body>
+</html>

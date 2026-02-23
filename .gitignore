@@ -7,3 +7,5 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
+packages/desktop/out/
+packages/desktop/release/
