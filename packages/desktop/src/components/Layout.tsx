@@ -51,22 +51,32 @@ const s = {
     letterSpacing: "0.1em",
   },
   sidebarFooter: {
-    padding: "12px 16px",
+    padding: "12px 12px",
     borderTop: "1px solid var(--border)",
   },
-  downloadLink: {
+  downloadBtn: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    fontSize: "11px",
-    color: "var(--green-dim)",
-    textDecoration: "none",
-    letterSpacing: "0.08em",
-    cursor: "pointer",
+    justifyContent: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "9px 12px",
+    border: "1px solid var(--green)",
+    borderRadius: "3px",
     background: "transparent",
-    border: "none",
+    color: "var(--green)",
+    cursor: "pointer",
+    fontSize: "12px",
     fontFamily: "var(--font)",
-    padding: 0,
+    letterSpacing: "0.08em",
+    transition: "background 0.15s",
+  },
+  downloadLabel: {
+    fontSize: "10px",
+    color: "var(--muted)",
+    textAlign: "center" as const,
+    marginTop: "6px",
+    letterSpacing: "0.05em",
   },
   main: {
     flex: 1,
@@ -112,12 +122,14 @@ export function Layout({ children }: Props) {
 
         <div style={s.sidebarFooter}>
           <button
-            style={s.downloadLink}
-            onClick={() => window.open("https://github.com/xxcvv2/null-platform/releases/latest", "_blank")}
-            title="Download latest Windows release"
+            style={s.downloadBtn}
+            onClick={() => window.open("https://github.com/xxcvv2/null/releases/latest", "_blank")}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,100,0.08)" }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
           >
             ↓ Download for Windows
           </button>
+          <div style={s.downloadLabel}>latest release · github.com/xxcvv2/null</div>
         </div>
       </div>
 
