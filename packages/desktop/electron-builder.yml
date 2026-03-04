@@ -4,8 +4,8 @@ copyright: Copyright © 2025
 
 publish:
   provider: github
-  owner: nullprotocol0
-  repo: null-platform
+  owner: xxcvv2
+  repo: null
 
 directories:
   output: release
