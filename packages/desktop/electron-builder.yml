@@ -5,7 +5,7 @@ copyright: Copyright © 2025
 publish:
   provider: github
   owner: xxcvv2
-  repo: null
+  repo: "null"
 
 directories:
   output: release
