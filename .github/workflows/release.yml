@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build @null/core
+        run: pnpm --filter @null/core build
+
       - name: Build Electron installer
         working-directory: packages/desktop
         run: pnpm package
