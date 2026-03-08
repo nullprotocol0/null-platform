@@ -88,7 +88,16 @@ function GroupMessageBubble({ message, isMine, senderLabel, now }: BubbleProps) 
   const timeRemaining = expiresAt ? expiresAt - now : null;
   const isExpired = timeRemaining !== null && timeRemaining <= 0;
 
-  if (isExpired) return null;
+  if (message.disappeared || isExpired) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: "10px" }}>
+        <div style={{ fontSize: "11px", color: "#333", fontStyle: "italic", padding: "6px 12px", border: "1px solid #1a1a1a", borderRadius: "2px" }}>
+          [ message disappeared ]
+        </div>
+        <div style={{ fontSize: "10px", color: "#2a2a2a", marginTop: "3px" }}>{formatTime(message.timestamp)}</div>
+      </div>
+    );
+  }
 
   const STATUS_SYMBOL = {
     pending:   { symbol: "○", color: "var(--muted)" },
@@ -219,12 +228,30 @@ export function GroupConversationPage({ pmRef }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Live clock for expiry countdowns — ticks every 10s
+  // Live clock for expiry countdowns — ticks every second
   const [now, setNow] = useState(() => Date.now());
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 10_000);
+    if (!groupId) return;
+    const id = setInterval(() => {
+      const ts = Date.now();
+      setNow(ts);
+      const toExpire = messagesRef.current.filter(
+        (m) => m.expiresAt && m.expiresAt <= ts && !m.disappeared
+      );
+      if (toExpire.length > 0) {
+        dispatch({ type: "EXPIRE_GROUP_MESSAGES", groupId });
+        for (const m of toExpire) {
+          void window.nullBridge.storage.put(
+            `gmsg:${groupId}:${String(m.timestamp).padStart(16, "0")}:${m.id}`,
+            JSON.stringify({ ...m, content: "", fileRef: undefined, disappeared: true })
+          );
+        }
+      }
+    }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [groupId, dispatch]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -263,8 +290,20 @@ export function GroupConversationPage({ pmRef }: Props) {
   }
 
   function handleSetTimer(value: number | undefined) {
-    if (!groupId) return;
+    if (!groupId || !group) return;
     dispatch({ type: "SET_GROUP_DISAPPEAR_TIMER", groupId, disappearAfterMs: value });
+    // Persist timer setting
+    if (value !== undefined) {
+      void window.nullBridge.storage.put(`group-meta:${groupId}`, JSON.stringify({ disappearAfterMs: value }));
+    } else {
+      void window.nullBridge.storage.del(`group-meta:${groupId}`);
+    }
+    // Sync to all group members via wire message
+    const wire = JSON.stringify({ type: "disappear-timer-group", groupId, disappearAfterMs: value ?? null });
+    for (const memberAddress of group.memberAddresses) {
+      if (memberAddress === state.wallet?.address) continue;
+      pmRef.current?.sendTo(memberAddress, wire);
+    }
     setShowTimerDropdown(false);
   }
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { LocalMessage } from "../context/reducer.js";
 import { parsePaymentContent } from "../lib/payments.js";
 import { PaymentBubble } from "./PaymentBubble.js";
+import { VoiceNoteBubble } from "./VoiceNoteBubble.js";
 
 interface Props {
   message: LocalMessage;
@@ -13,6 +14,34 @@ const STATUS = {
   delivered: { symbol: "✓", color: "var(--green-dim)", label: "delivered" },
   failed:    { symbol: "✗", color: "var(--red)",        label: "failed to deliver" },
 } as const;
+
+// ── Hooks ───────────────────────────────────────────────────────────────────
+
+function useCountdown(expiresAt: number | undefined): string | null {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!expiresAt) { setRemaining(null); return; }
+    const update = () => setRemaining(Math.max(0, expiresAt - Date.now()));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+
+  if (remaining === null || remaining <= 0) return null;
+
+  const s = Math.floor(remaining / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -34,8 +63,9 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// ── File content (images + generic files) ────────────────────────────────────
+
 function FileContent({ message, isMine }: { message: LocalMessage; isMine: boolean }) {
-  // Keep all hooks at top level (before any conditional return) per React rules
   const ref = message.fileRef;
 
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -46,7 +76,6 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
   useEffect(() => {
     if (!ref?.bytes || ref.bytes === prevBytesRef.current) return;
     prevBytesRef.current = ref.bytes;
-    // Slice to plain ArrayBuffer to satisfy Blob constructor typing
     const buf = ref.bytes.buffer.slice(
       ref.bytes.byteOffset,
       ref.bytes.byteOffset + ref.bytes.byteLength
@@ -70,10 +99,7 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
     if (!bytes) return;
     setSaving(true);
     try {
-      const path = await window.nullBridge.system.saveFile(
-        ref.fileName,
-        Array.from(bytes)
-      );
+      const path = await window.nullBridge.system.saveFile(ref.fileName, Array.from(bytes));
       setSavedPath(path);
     } catch (e) {
       console.error("Save failed:", e);
@@ -89,21 +115,13 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
           <img
             src={objectUrl}
             alt={ref.fileName}
-            style={{
-              maxWidth: "280px",
-              maxHeight: "280px",
-              borderRadius: "4px",
-              cursor: "pointer",
-              display: "block",
-            }}
+            style={{ maxWidth: "280px", maxHeight: "280px", borderRadius: "4px", cursor: "pointer", display: "block" }}
             onClick={() => window.open(objectUrl, "_blank")}
             title={ref.fileName}
           />
         ) : (
           <div style={{ fontSize: "12px", color: "var(--muted)", fontStyle: "italic" }}>
-            {isReceiving
-              ? `receiving image…${progress ? ` (${progress})` : ""}`
-              : "image unavailable"}
+            {isReceiving ? `receiving image…${progress ? ` (${progress})` : ""}` : "image unavailable"}
           </div>
         )}
         <div style={{ fontSize: "10px", color: "var(--muted)" }}>
@@ -113,7 +131,6 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
     );
   }
 
-  // Non-image file
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -121,15 +138,12 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
         <div>
           <div style={{ fontSize: "13px", color: "var(--green)" }}>{ref.fileName}</div>
           <div style={{ fontSize: "10px", color: "var(--muted)" }}>
-            {formatBytes(ref.totalSize)}
-            {isReceiving && progress ? ` · receiving… ${progress}` : ""}
+            {formatBytes(ref.totalSize)}{isReceiving && progress ? ` · receiving… ${progress}` : ""}
           </div>
         </div>
       </div>
       {savedPath ? (
-        <div style={{ fontSize: "10px", color: "var(--muted)", fontStyle: "italic" }}>
-          Saved to Downloads
-        </div>
+        <div style={{ fontSize: "10px", color: "var(--muted)", fontStyle: "italic" }}>Saved to Downloads</div>
       ) : ref.bytes ? (
         <button
           onClick={handleSave}
@@ -152,11 +166,39 @@ function FileContent({ message, isMine }: { message: LocalMessage; isMine: boole
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function MessageBubble({ message, isMine }: Props) {
+  const countdown = useCountdown(message.expiresAt);
   const status = STATUS[message.status];
   const dateLabel = formatDate(message.timestamp);
-  const isFile = !!message.fileRef;
-  const payment = !isFile ? parsePaymentContent(message.content) : null;
+
+  const isVoiceNote = !!message.fileRef && message.fileRef.mimeType.startsWith("audio/");
+  const isFile = !!message.fileRef && !isVoiceNote;
+  const payment = !message.fileRef ? parsePaymentContent(message.content) : null;
+
+  if (message.disappeared) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", gap: "4px", marginBottom: "8px" }}>
+        {dateLabel && (
+          <div style={{ fontSize: "10px", color: "var(--muted)", alignSelf: "center", padding: "4px 0 8px" }}>
+            {dateLabel}
+          </div>
+        )}
+        <div style={{
+          fontSize: "11px",
+          color: "#333",
+          fontStyle: "italic",
+          padding: "6px 12px",
+          border: "1px solid #1a1a1a",
+          borderRadius: "2px",
+        }}>
+          [ message disappeared ]
+        </div>
+        <div style={{ fontSize: "10px", color: "#2a2a2a" }}>{formatTime(message.timestamp)}</div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -169,24 +211,18 @@ export function MessageBubble({ message, isMine }: Props) {
       }}
     >
       {dateLabel && (
-        <div
-          style={{
-            fontSize: "10px",
-            color: "var(--muted)",
-            alignSelf: "center",
-            padding: "4px 0 8px",
-          }}
-        >
+        <div style={{ fontSize: "10px", color: "var(--muted)", alignSelf: "center", padding: "4px 0 8px" }}>
           {dateLabel}
         </div>
       )}
+
       <div
         style={{
           background: isMine ? "var(--bg-surface)" : "transparent",
           border: `1px solid ${payment ? "rgba(0,255,65,0.25)" : "var(--border)"}`,
           borderRadius: "4px",
-          padding: isFile || payment ? "10px 12px" : "8px 12px",
-          maxWidth: isFile || payment ? "320px" : "70%",
+          padding: isFile || payment || isVoiceNote ? "10px 12px" : "8px 12px",
+          maxWidth: isFile || payment || isVoiceNote ? "340px" : "70%",
           wordBreak: "break-word",
           fontSize: "13px",
           color: "var(--green)",
@@ -194,7 +230,9 @@ export function MessageBubble({ message, isMine }: Props) {
           userSelect: "text",
         }}
       >
-        {isFile ? (
+        {isVoiceNote && message.fileRef ? (
+          <VoiceNoteBubble fileRef={message.fileRef} isMine={isMine} />
+        ) : isFile ? (
           <FileContent message={message} isMine={isMine} />
         ) : payment ? (
           <PaymentBubble payload={payment} isMine={isMine} />
@@ -202,22 +240,24 @@ export function MessageBubble({ message, isMine }: Props) {
           message.content
         )}
       </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          fontSize: "10px",
-          color: "var(--muted)",
-        }}
-      >
+
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", color: "var(--muted)" }}>
         <span>{formatTime(message.timestamp)}</span>
         {isMine && (
-          <span
-            style={{ color: status.color, cursor: "default" }}
-            title={status.label}
-          >
+          <span style={{ color: status.color, cursor: "default" }} title={status.label}>
             {status.symbol}
+          </span>
+        )}
+        {countdown !== null && (
+          <span
+            title="Message will disappear"
+            style={{
+              color: countdown.endsWith("s") ? "#ff4444" : "#ffaa00",
+              fontSize: "9px",
+              letterSpacing: "0.05em",
+            }}
+          >
+            ↓{countdown}
           </span>
         )}
       </div>

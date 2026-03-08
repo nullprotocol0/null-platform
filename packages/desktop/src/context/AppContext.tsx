@@ -131,6 +131,30 @@ async function loadData(
     }
   }
   dispatch({ type: "LOAD_GROUP_CONVERSATIONS", groupConversations });
+
+  // DM disappear timer settings
+  const convMetaRows = await bridge.storage.list("conv-meta:");
+  for (const { key, value } of convMetaRows) {
+    const addr = key.slice("conv-meta:".length);
+    try {
+      const meta = JSON.parse(value) as { disappearAfterMs?: number };
+      if (meta.disappearAfterMs !== undefined) {
+        dispatch({ type: "SET_DISAPPEAR_TIMER", contactAddress: addr, disappearAfterMs: meta.disappearAfterMs });
+      }
+    } catch { /* skip */ }
+  }
+
+  // Group disappear timer settings
+  const groupMetaRows = await bridge.storage.list("group-meta:");
+  for (const { key, value } of groupMetaRows) {
+    const groupId = key.slice("group-meta:".length);
+    try {
+      const meta = JSON.parse(value) as { disappearAfterMs?: number };
+      if (meta.disappearAfterMs !== undefined) {
+        dispatch({ type: "SET_GROUP_DISAPPEAR_TIMER", groupId, disappearAfterMs: meta.disappearAfterMs });
+      }
+    } catch { /* skip */ }
+  }
 }
 
 // ── Provider ───────────────────────────────────────────────────────────────

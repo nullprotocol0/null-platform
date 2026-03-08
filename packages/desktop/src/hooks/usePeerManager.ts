@@ -406,6 +406,34 @@ export function usePeerManager(): MutableRefObject<PeerManager | null> {
         return;
       }
 
+      // ── Disappear timer control ────────────────────────────────────────────
+      try {
+        const obj = JSON.parse(rawData) as Record<string, unknown>;
+        if (obj["type"] === "disappear-timer") {
+          const ms = typeof obj["disappearAfterMs"] === "number" ? (obj["disappearAfterMs"] as number) : undefined;
+          dispatch({ type: "SET_DISAPPEAR_TIMER", contactAddress: fromAddress, disappearAfterMs: ms });
+          if (ms !== undefined) {
+            void window.nullBridge.storage.put(`conv-meta:${fromAddress}`, JSON.stringify({ disappearAfterMs: ms }));
+          } else {
+            void window.nullBridge.storage.del(`conv-meta:${fromAddress}`);
+          }
+          return;
+        }
+        if (obj["type"] === "disappear-timer-group") {
+          const groupId = typeof obj["groupId"] === "string" ? (obj["groupId"] as string) : null;
+          const ms = typeof obj["disappearAfterMs"] === "number" ? (obj["disappearAfterMs"] as number) : undefined;
+          if (groupId) {
+            dispatch({ type: "SET_GROUP_DISAPPEAR_TIMER", groupId, disappearAfterMs: ms });
+            if (ms !== undefined) {
+              void window.nullBridge.storage.put(`group-meta:${groupId}`, JSON.stringify({ disappearAfterMs: ms }));
+            } else {
+              void window.nullBridge.storage.del(`group-meta:${groupId}`);
+            }
+          }
+          return;
+        }
+      } catch { /* not a disappear-timer message */ }
+
       // ── Chat messages ────────────────────────────────────────────────────
       const parsed = parseIncoming(rawData);
       if (!parsed) return;

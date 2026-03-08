@@ -24,6 +24,10 @@ export interface FileRef {
   receivedChunks?: number;
   bytes?: Uint8Array;
   savedPath?: string;
+  /** Voice notes: duration in ms */
+  voiceDuration?: number;
+  /** Voice notes: amplitude waveform [0..1], 40-80 samples */
+  waveform?: number[];
 }
 
 export interface LocalMessage {
@@ -38,6 +42,8 @@ export interface LocalMessage {
   expiresAt?: number;
   /** Payment message */
   payment?: PaymentRef;
+  /** True after the message has disappeared (tombstone) */
+  disappeared?: boolean;
 }
 
 export interface PaymentRef {
@@ -219,6 +225,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "RECEIVE_MESSAGE": {
       const existing = state.conversations[action.contactAddress];
+      const dm = existing?.disappearAfterMs;
+      // Timer starts on delivery (receipt = delivery for receiver)
+      const msg = dm !== undefined && !action.message.expiresAt
+        ? { ...action.message, expiresAt: Date.now() + dm }
+        : action.message;
       const isCurrentConv =
         state.screen === "conversation" &&
         state.currentContactAddress === action.contactAddress;
@@ -228,8 +239,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ...state.conversations,
           [action.contactAddress]: {
             contactAddress: action.contactAddress,
-            messages: [...(existing?.messages ?? []), action.message],
-            lastActivity: action.message.timestamp,
+            messages: [...(existing?.messages ?? []), msg],
+            lastActivity: msg.timestamp,
             ...(existing?.disappearAfterMs !== undefined ? { disappearAfterMs: existing.disappearAfterMs } : {}),
           },
         },
@@ -242,15 +253,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "UPDATE_MESSAGE_STATUS": {
       const conv = state.conversations[action.contactAddress];
       if (!conv) return state;
+      const dm = conv.disappearAfterMs;
       return {
         ...state,
         conversations: {
           ...state.conversations,
           [action.contactAddress]: {
             ...conv,
-            messages: conv.messages.map((m) =>
-              m.id === action.messageId ? { ...m, status: action.status } : m
-            ),
+            messages: conv.messages.map((m) => {
+              if (m.id !== action.messageId) return m;
+              // Timer starts on delivery for outgoing messages
+              if (action.status === "delivered" && dm !== undefined && !m.expiresAt) {
+                return { ...m, status: action.status, expiresAt: Date.now() + dm };
+              }
+              return { ...m, status: action.status };
+            }),
           },
         },
       };
@@ -363,11 +380,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const conv = state.conversations[action.contactAddress];
       if (!conv) return state;
       const now = Date.now();
-      const alive = conv.messages.filter((m) => !m.expiresAt || m.expiresAt > now);
-      if (alive.length === conv.messages.length) return state;
+      let changed = false;
+      const messages = conv.messages.map((m): LocalMessage => {
+        if (!m.expiresAt || m.expiresAt > now || m.disappeared) return m;
+        changed = true;
+        return {
+          id: m.id, fromAddress: m.fromAddress, toAddress: m.toAddress,
+          content: "", timestamp: m.timestamp, status: m.status,
+          disappeared: true, expiresAt: m.expiresAt,
+          ...(m.payment !== undefined ? { payment: m.payment } : {}),
+        };
+      });
+      if (!changed) return state;
       return {
         ...state,
-        conversations: { ...state.conversations, [action.contactAddress]: { ...conv, messages: alive } },
+        conversations: { ...state.conversations, [action.contactAddress]: { ...conv, messages } },
       };
     }
 
@@ -414,6 +441,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "RECEIVE_GROUP_MESSAGE": {
       const existing = state.groupConversations[action.groupId];
+      const dm = existing?.disappearAfterMs;
+      const msg = dm !== undefined && !action.message.expiresAt
+        ? { ...action.message, expiresAt: Date.now() + dm }
+        : action.message;
       const isActive = state.screen === "group-conversation" && state.currentGroupId === action.groupId;
       return {
         ...state,
@@ -421,8 +452,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ...state.groupConversations,
           [action.groupId]: {
             groupId: action.groupId,
-            messages: [...(existing?.messages ?? []), action.message],
-            lastActivity: action.message.timestamp,
+            messages: [...(existing?.messages ?? []), msg],
+            lastActivity: msg.timestamp,
             ...(existing?.disappearAfterMs !== undefined ? { disappearAfterMs: existing.disappearAfterMs } : {}),
           },
         },
@@ -435,15 +466,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "UPDATE_GROUP_MESSAGE_STATUS": {
       const conv = state.groupConversations[action.groupId];
       if (!conv) return state;
+      const dm = conv.disappearAfterMs;
       return {
         ...state,
         groupConversations: {
           ...state.groupConversations,
           [action.groupId]: {
             ...conv,
-            messages: conv.messages.map((m) =>
-              m.id === action.messageId ? { ...m, status: action.status } : m
-            ),
+            messages: conv.messages.map((m) => {
+              if (m.id !== action.messageId) return m;
+              if (action.status === "delivered" && dm !== undefined && !m.expiresAt) {
+                return { ...m, status: action.status, expiresAt: Date.now() + dm };
+              }
+              return { ...m, status: action.status };
+            }),
           },
         },
       };
@@ -511,11 +547,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const gc = state.groupConversations[action.groupId];
       if (!gc) return state;
       const now = Date.now();
-      const alive = gc.messages.filter((m) => !m.expiresAt || m.expiresAt > now);
-      if (alive.length === gc.messages.length) return state;
+      let changed = false;
+      const messages = gc.messages.map((m): LocalMessage => {
+        if (!m.expiresAt || m.expiresAt > now || m.disappeared) return m;
+        changed = true;
+        return {
+          id: m.id, fromAddress: m.fromAddress, toAddress: m.toAddress,
+          content: "", timestamp: m.timestamp, status: m.status,
+          disappeared: true, expiresAt: m.expiresAt,
+          ...(m.payment !== undefined ? { payment: m.payment } : {}),
+        };
+      });
+      if (!changed) return state;
       return {
         ...state,
-        groupConversations: { ...state.groupConversations, [action.groupId]: { ...gc, messages: alive } },
+        groupConversations: { ...state.groupConversations, [action.groupId]: { ...gc, messages } },
       };
     }
 
